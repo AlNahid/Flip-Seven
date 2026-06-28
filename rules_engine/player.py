@@ -34,6 +34,9 @@ class Player:
     def has_modifier_cards(self) -> bool:
         return len(self.modifier_cards) > 0
     
+    def has_number(self, value: int) -> bool:
+        return any(card.value == value for card in self.number_cards)
+
     def has_flip_seven(self) -> bool:
         if len(self.number_cards) == 7:
             self.state = PlayerState.FLIPPED

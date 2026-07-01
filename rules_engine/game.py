@@ -1,3 +1,4 @@
+import random
 from rules_engine import deck
 from rules_engine.player import Player, PlayerState
 from rules_engine.cards import Card, CardType, ModifierType, ActionType
@@ -58,13 +59,143 @@ class Game:
         if player.is_active():
             player.add_number_card(card)
             if player.busted():
-                raise ValueError(f"Player {player.name} has busted with duplicate number cards.")
-            elif player.has_flip_seven():
-                self.flip_seven_triggered = True
-        
+                if player.second_chance_card is not None:
+                    player.number_cards.remove(card)
+                    self.deck.discard_card([card, player.second_chance_card])
+                    player.second_chance_card = None
+                    player.state = PlayerState.ACTIVE
+                else:    
+                    return
+            if not player.is_busted() and player.has_flip_seven():
+                self.flip_seven_triggered = True    
+        else:
+            raise ValueError (f"Player {player.name} is not active.")
+    
+    def resolve_modifier_card(self, player: Player, card: Card):
+        if player.is_active():
+            player.add_modifier_card(card)
         else:
             raise ValueError (f"Player {player.name} is not active.")
         
-        return None
+    def apply_freeze_player(self, player: Player, card: Card):
+        if player.is_active():
+            self.deck.discard_card([card])
+            player.state = PlayerState.FROZEN
+        else:
+            raise ValueError(f"Player {player.name} is not active.")
+        
+    def apply_second_chance(self, player: Player, card: Card):
+        if player.is_active():
+            if player.second_chance_card is None:
+                player.second_chance_card = card
+            else:
+                eligible_players = [p for p in self.active_players() if p != player 
+                                    and p.second_chance_card is None]
+                if eligible_players:
+                    chosen_player = random.choice(eligible_players)
+                    chosen_player.second_chance_card = card
+                else:
+                    self.deck.discard_card([card]) 
+        else:
+            raise ValueError(f"Player {player.name} is not active.")
+        
+    def apply_flip_three(self, player: Player, card: Card):
+        self.deck.discard_card([card])
+        cards_on_hold = []
+        if player.is_active():
+            for i in range(3):
+                card = self.deck.draw_card()
+                if card is None: break
+                if card.category == CardType.NUMBER:
+                    self.resolve_number_card(player, card)
+                    if player.is_busted() or self.flip_seven_triggered:
+                        break
+                elif card.category == CardType.MODIFIER:
+                    self.resolve_modifier_card(player, card)
+                elif card.category == CardType.ACTION:
+                    cards_on_hold.append(card)
+            if player.is_busted() or self.flip_seven_triggered:
+                if cards_on_hold:
+                    self.deck.discard_card(cards_on_hold)
+            else:
+                for held_card in cards_on_hold:
+                    self.resolve_action_card(player, held_card)
+        else:
+            raise ValueError(f"Player {player.name} is not active.")
+        
+    def resolve_action_card(self, receiving_player: Player, card: Card):
+        target_player = self.choose_target_player(receiving_player)
+        if card.value == ActionType.FREEZE:
+            self.apply_freeze_player(target_player, card)
+        elif card.value == ActionType.SECOND_CHANCE:
+            self.apply_second_chance(target_player, card)
+        elif card.value == ActionType.FLIP_THREE:
+            self.apply_flip_three(target_player, card)
+        else:
+            raise ValueError(f"Unknown action type: {card.value}")
     
-    # next time: implement the logic for resolving action cards
+    def choose_target_player(self, receiving_player: Player) -> Player:
+        eligible_players = self.active_players()
+        print(f"Eligible players for targeting:")
+        for i in range(len(eligible_players)):
+            print(f"{i + 1}. {eligible_players[i].name}")
+        print(f"{receiving_player.name}, choose a player to target:")
+        while True:
+            try:
+                choice = int(input())
+                if 1 <= choice <= len(eligible_players):
+                    return eligible_players[choice - 1]
+                else:
+                    print("Invalid choice. Please try again.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+
+    def deal_initial_cards(self):
+        for i in range (len(self.players)):
+            if self.is_round_over():
+                break
+            index = (self.first_player_index + i) % len(self.players)
+            player = self.players[index]
+            card = self.deck.draw_card()
+            if card is None:
+                raise ValueError("Deck is empty. Cannot deal initial cards.")
+            if card.category == CardType.NUMBER:
+                self.resolve_number_card(player, card)
+            elif card.category == CardType.MODIFIER:
+                self.resolve_modifier_card(player, card)
+            elif card.category == CardType.ACTION:
+                self.resolve_action_card(player, card)
+
+    def player_hit(self, player: Player):
+        if player.is_active():
+            card = self.deck.draw_card()
+            if card is None:
+                raise ValueError("Deck is empty. Cannot draw a card.")
+            if card.category == CardType.NUMBER:
+                self.resolve_number_card(player, card)
+            elif card.category == CardType.MODIFIER:
+                self.resolve_modifier_card(player, card)
+            elif card.category == CardType.ACTION:
+                self.resolve_action_card(player, card)
+        else:
+            raise ValueError(f"Player {player.name} is not active.")
+    
+    def end_round(self):
+        for player in self.players:
+            player.get_round_score()
+            player.get_total_score()
+            collect_cards = player.number_cards + player.modifier_cards
+            if player.second_chance_card is not None:
+                collect_cards.append(player.second_chance_card)
+            self.deck.discard_card(collect_cards)
+            player.reset_round()
+
+    def is_game_over(self) -> bool:
+        return any(player.total_score >= 200 for player in self.players)
+    
+    def get_winner(self) -> Player | None:
+        if self.is_game_over():
+            return max(self.players, key=lambda p: p.total_score)
+        return None
+
+

@@ -11,6 +11,7 @@ class Game:
         self.current_player_index = (self.first_player_index + 1) % len(self.players)
         self.round_number = 0
         self.flip_seven_triggered = False
+        self.log = []
     
 
     def active_players(self) -> list[Player]:
@@ -29,10 +30,12 @@ class Game:
         self.first_player_index = (self.first_player_index + 1) % len(self.players)
         self.current_player_index = (self.first_player_index + 1) % len(self.players)
         self.deck.shuffle()
+        self.log.append(f"--- Round {self.round_number} started ---")
 
     def player_stay(self, player: Player):
         if player.is_active() and player.has_number_cards():
             player.state = PlayerState.STAYED
+            self.log.append(f"{player.name} chose to Stay")
         else:
             raise ValueError("Player cannot stay without any number cards.")
         
@@ -58,22 +61,27 @@ class Game:
     def resolve_number_card(self, player: Player, card: Card):
         if player.is_active():
             player.add_number_card(card)
+            self.log.append(f"{player.name} drew number card {card.value}")
             if player.busted():
                 if player.second_chance_card is not None:
                     player.number_cards.remove(card)
                     self.deck.discard_card([card, player.second_chance_card])
                     player.second_chance_card = None
                     player.state = PlayerState.ACTIVE
-                else:    
+                    self.log.append(f"{player.name} was saved by Second Chance!")
+                else:
+                    self.log.append(f"{player.name} busted!")    
                     return
             if not player.is_busted() and player.has_flip_seven():
-                self.flip_seven_triggered = True    
+                self.flip_seven_triggered = True
+                self.log.append(f"{player.name} hit Flip 7!")    
         else:
             raise ValueError (f"Player {player.name} is not active.")
     
     def resolve_modifier_card(self, player: Player, card: Card):
         if player.is_active():
             player.add_modifier_card(card)
+            self.log.append(f"{player.name} drew modifier {card.value.name}")
         else:
             raise ValueError (f"Player {player.name} is not active.")
         
@@ -81,25 +89,19 @@ class Game:
         if player.is_active():
             self.deck.discard_card([card])
             player.state = PlayerState.FROZEN
+            self.log.append(f"{player.name} was frozen!")
         else:
             raise ValueError(f"Player {player.name} is not active.")
         
-    def apply_second_chance(self, player: Player, card: Card):
-        if player.is_active():
-            if player.second_chance_card is None:
-                player.second_chance_card = card
-            else:
-                eligible_players = [p for p in self.active_players() if p != player 
-                                    and p.second_chance_card is None]
-                if eligible_players:
-                    chosen_player = random.choice(eligible_players)
-                    chosen_player.second_chance_card = card
-                else:
-                    self.deck.discard_card([card]) 
+    def apply_second_chance(self, receiving_player: Player, card: Card):
+        if receiving_player.is_active():
+            receiving_player.second_chance_card = card
+            self.log.append(f"{receiving_player.name} received a Second Chance card")
         else:
-            raise ValueError(f"Player {player.name} is not active.")
+            raise ValueError(f"Player {receiving_player.name} is not active.")
         
     def apply_flip_three(self, player: Player, card: Card):
+        self.log.append(f"{player.name} must draw 3 cards (Flip Three)!")
         self.deck.discard_card([card])
         cards_on_hold = []
         if player.is_active():
@@ -124,7 +126,9 @@ class Game:
             raise ValueError(f"Player {player.name} is not active.")
         
     def resolve_action_card(self, receiving_player: Player, card: Card):
-        target_player = self.choose_target_player(receiving_player)
+        target_player = self.choose_target_player(receiving_player, card)
+        if target_player is None:
+            return
         if card.value == ActionType.FREEZE:
             self.apply_freeze_player(target_player, card)
         elif card.value == ActionType.SECOND_CHANCE:
@@ -134,8 +138,12 @@ class Game:
         else:
             raise ValueError(f"Unknown action type: {card.value}")
     
-    def choose_target_player(self, receiving_player: Player) -> Player:
-        eligible_players = self.active_players()
+    def choose_target_player(self, receiving_player: Player, card: Card) -> Player:
+        if card.value == ActionType.SECOND_CHANCE:
+            eligible_players = [p for p in self.active_players() 
+                                if p.second_chance_card is None]
+        else:
+            eligible_players = self.active_players()
         print(f"Eligible players for targeting:")
         for i in range(len(eligible_players)):
             print(f"{i + 1}. {eligible_players[i].name}")
@@ -181,6 +189,7 @@ class Game:
             raise ValueError(f"Player {player.name} is not active.")
     
     def end_round(self):
+        self.log.append(f"--- Round {self.round_number} ended ---")
         for player in self.players:
             player.get_round_score()
             player.get_total_score()

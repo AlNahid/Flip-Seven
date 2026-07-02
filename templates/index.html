@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flip 7</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <div id="main">
+            <div id="header">
+                <h1>Flip 7</h1>
+                <div id="round-info">
+                    <span>Round <span id="round-number">{{ state.round }}</span></span>
+                    <span>Current Turn: <strong id="current-player">{{ state.current_player }}</strong></span>
+                </div>
+            </div>
+
+            <div id="players">
+                {% for player in state.players | sort(attribute='name') %}
+                <div class="player-card {% if player.name == state.current_player %}active-turn{% endif %}"
+                     id="player-{{ player.name }}">
+                    <div class="player-header">
+                        <span class="player-name">{{ player.name }}</span>
+                        <span class="player-state {{ player.state.lower() }}">{{ player.state }}</span>
+                    </div>
+                    <div class="player-scores">
+                        <span>Round: <strong>{{ player.round_score }}</strong></span>
+                        <span>Total: <strong>{{ player.total_score }}</strong></span>
+                    </div>
+                    <div class="player-cards">
+                        <span class="card-label">Numbers:</span>
+                        <span class="card-values">{{ player.number_cards | join(", ") or "—" }}</span>
+                    </div>
+                    <div class="player-cards">
+                        <span class="card-label">Modifiers:</span>
+                        <span class="card-values">{{ player.modifier_cards | join(", ") or "—" }}</span>
+                    </div>
+                    <div class="player-cards">
+                        <span class="card-label">2nd Chance:</span>
+                        <span class="card-values {% if player.second_chance_card %}has-sc{% endif %}">
+                            {{ "✓ Held" if player.second_chance_card else "—" }}
+                        </span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div id="controls">
+                <button id="hit-btn" onclick="sendAction('hit')">Hit</button>
+                <button id="stay-btn" onclick="sendAction('stay')">Stay</button>
+                <span id="status-message">{{ state.current_player }}'s turn</span>
+            </div>
+
+            <div id="game-over" style="display:none;">
+                <h2>🎉 Game Over!</h2>
+                <p>Winner: <strong id="winner-name"></strong></p>
+            </div>
+        </div>
+
+        <div id="sidebar">
+            <h3>Game Log</h3>
+            <ul id="log-list">
+                {% for entry in state.log %}
+                <li class="{{ 'log-divider' if '---' in entry else '' }}">{{ entry }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
